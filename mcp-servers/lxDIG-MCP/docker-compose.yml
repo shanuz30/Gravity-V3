@@ -1,0 +1,20 @@
+services:
+  memgraph:
+    image: memgraph/memgraph:latest
+    container_name: lxDIG-memgraph
+    ports:
+      - "7687:7687"
+      - "7444:7444"
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: lxDIG-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+  graph-server:
+    image: node:20-slim
+    container_name: lxDIG-mcp
+    environment:
+      - MCP_TRANSPORT=http
+      - MEMGRAPH_HOST=memgraph
+      - QDRANT_HOST=qdrant
