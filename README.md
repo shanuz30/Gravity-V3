@@ -7,6 +7,7 @@ Gravity-V3 is a deterministic, graph-grounded, and metacognitively steered agent
 2. **Dual-Brain Routing:** Autonomous arbitration between semantic search (Qdrant) and structural knowledge (Memgraph).
 3. **Metacognitive Steering:** Dynamic adjustment of hallucination thresholds and grounding strictness based on environmental telemetry (Emotion Vectors).
 4. *Infrastructure:** Fully containerized (Docker/WSL2) to ensure data privacy and zero cloud-token waste.
+5. **AI-Assisted Development:** Built with GitHub Copilot for agent scaffolding, MCP server configuration, and iterative architecture refinement.
 
 ## Structure
 - `/scripts`: Core logic for arbitration, gating, and monitoring.
