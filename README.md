@@ -1,6 +1,6 @@
 # Gravity Version 3 Agentic Architecture
 
-Gravity-V3 is a deterministic, graph-grounded, and metacognitively steered agent architecture designed for high-assurance industrial applications (e.g., Krones Agentic Digital Twins).
+Gravity-V3 is a deterministic, graph-grounded, and metacognitively steered agent architecture designed for high-assurance industrial applications.
 
 ## Core Pillars
 1. **Deterministic Execution:** The Mechanical Gate (Python/TypeScript) intercepts LLM intents and enforces safety via hard-coded regex and topology validation.
