@@ -1,6 +1,4 @@
-# Krones Agentic Digital Twin: Sovereign Architecture Proof
-**Target:** Philipp Olenberg, Head of Artificial Intelligence | Krones.digital
-**Architect:** Shanu (Antigravity System)
+# Agentic Digital Twin
 
 ---
 
