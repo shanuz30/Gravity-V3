@@ -1,10 +1,10 @@
-# Gravity-V3: Sovereign Agent Setup Guide
+# Gravity-V3:Agent Setup Guide
 *Replication Protocol for the Antigravity Architecture*
 
 ---
 
 ## 1. Prerequisites
-To run a Tier-3 Sovereign Agent, the host machine must support local execution of structural and semantic memory engines.
+To run a Tier-3 Agent, the host machine must support local execution of structural and semantic memory engines.
 
 - **OS:** Windows 10/11 with **WSL2** installed.
 - **Docker Desktop:** Required for Memgraph (Graph) and Qdrant (Vector).
