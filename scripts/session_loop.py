@@ -10,8 +10,11 @@ writer_agent = None
 auditor_agent = None
 coordinator_agent = None
 
+# Optional ChatHistoryStore instance. When set, every session result is persisted.
+chat_history_store = None
 
-def execute_session_loop_with_fallback(user_input: str, context: dict):
+
+def execute_session_loop_with_fallback(user_input: str, context: dict, session_id: str = None):
     """
     Generates a verified draft via a write-audit loop grounded in the knowledge graph.
 
@@ -26,6 +29,7 @@ def execute_session_loop_with_fallback(user_input: str, context: dict):
 
     worker_brief = _prepare_worker_brief(user_input=user_input, truth_data=truth_data, context=context)
     if "INSUFFICIENT VARIABLES:" in worker_brief:
+        _maybe_record(user_input, worker_brief, session_id)
         return worker_brief
 
     draft = writer_agent.generate(prompt=worker_brief, facts=truth_data)
@@ -37,7 +41,8 @@ def execute_session_loop_with_fallback(user_input: str, context: dict):
         audit_result = _call_auditor_check(draft=draft, truth_data=truth_data, worker_brief=worker_brief)
 
         if "TRUTH_VERIFIED" in audit_result:
-            return draft  # Optimal success path
+            _maybe_record(user_input, draft, session_id)
+            return draft
 
         # Conflict detected — regenerate and retry
         print(f"Attempt {attempts + 1}: Conflict detected. Retrying...")
@@ -45,7 +50,7 @@ def execute_session_loop_with_fallback(user_input: str, context: dict):
         attempts += 1
 
     # STOP CONDITION: escalate to human after exhausting retries
-    return {
+    result = {
         "status": "ESCALATED_TO_HUMAN",
         "last_draft": draft,
         "conflict_summary": audit_result,
@@ -53,6 +58,8 @@ def execute_session_loop_with_fallback(user_input: str, context: dict):
             "Please resolve the contradiction between the Graph and the Writer."
         ),
     }
+    _maybe_record(user_input, result, session_id)
+    return result
 
 
 def _prepare_worker_brief(user_input: str, truth_data: dict, context: dict) -> str:
@@ -72,3 +79,10 @@ def _call_auditor_check(*, draft: str, truth_data: dict, worker_brief: str) -> s
             return auditor_agent.check(draft, truth_data, worker_brief)
         except TypeError:
             return auditor_agent.check(draft, truth_data)
+
+
+def _maybe_record(user_input: str, result, session_id) -> None:
+    if chat_history_store is None:
+        return
+    from scripts.chat_history import record_session_result
+    record_session_result(chat_history_store, user_input, result, session_id)
