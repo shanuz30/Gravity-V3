@@ -39,18 +39,23 @@ class CRAGSignal:
     @property
     def alarm(self) -> str:
         """
-        FULL_DRIFT  — both layers fired (hard alarm, re-anchor required)
-        LAYER1_WARN — distribution drift only
-        LAYER2_WARN — semantic drift only
-        SAFE        — no drift detected
+        FULL_DRIFT       — both layers fired (hard alarm, re-anchor required)
+        ENTROPY_TRIPWIRE — JS divergence only (distribution drift)
+        SEMANTIC_DRIFT   — cosine only (embedding drift)
+        SAFE             — no drift detected
         """
         if self.layer1_fired and self.layer2_fired:
             return "FULL_DRIFT"
         if self.layer1_fired:
-            return "LAYER1_WARN"
+            return "ENTROPY_TRIPWIRE"
         if self.layer2_fired:
-            return "LAYER2_WARN"
+            return "SEMANTIC_DRIFT"
         return "SAFE"
+
+    @property
+    def drift_score(self) -> float:
+        """Composite drift magnitude in [0, 1]. Both layers equally weighted."""
+        return (self.js_divergence / 0.3 + (1 - self.cosine_sim)) / 2
 
 
 @dataclass
