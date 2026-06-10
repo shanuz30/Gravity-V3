@@ -32,7 +32,7 @@ from .core.gan import GANLoop
 
 @dataclass
 class AntigravityConfig:
-    model: str = "claude-sonnet-4-20250514"
+    model: str = "claude-sonnet-4-6"
 
     # LCV (gamma-damping fix)
     gamma: float = 0.85
