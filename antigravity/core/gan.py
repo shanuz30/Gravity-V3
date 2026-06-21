@@ -8,6 +8,7 @@ The 71% ceiling (pre-fix) was the system measuring its own oscillation.
 import json
 import time
 import uuid
+from pathlib import Path
 from typing import Optional
 from .types import GANSignal
 
@@ -58,17 +59,36 @@ class GANLoop:
     Max rounds: 3 (Tier 3 spiral prevention).
     """
 
-    def __init__(self, client, model: str = "claude-sonnet-4-20250514", max_rounds: int = 3):
+    def __init__(
+        self,
+        client,
+        model: str = "claude-sonnet-4-20250514",
+        max_rounds: int = 3,
+        state_dir: Optional[str] = None,
+    ):
         self.client = client
         self.model = model
         self.max_rounds = max_rounds
+
+        base = Path(state_dir) if state_dir else Path(__file__).resolve().parent.parent / "state"
+        base.mkdir(parents=True, exist_ok=True)
+        self._memory_path = base / "memory.md"
+        self._wiki_path = base / "wiki.md"
+        if not self._memory_path.exists():
+            self._memory_path.write_text("# Antigravity Memory Log\n\n", encoding="utf-8")
+        if not self._wiki_path.exists():
+            self._wiki_path.write_text("# Antigravity Wiki\n", encoding="utf-8")
 
     def run(self, hypothesis: str, memory_context: str = "") -> GANSignal:
         """
         Full GAN loop on a hypothesis.
 
-        memory_context: contents of memory.md + wiki.md (pre-loaded by caller).
+        memory_context: contents of memory.md + wiki.md. If omitted, loaded
+        automatically from disk (last 3 memory entries + full wiki).
         """
+        if not memory_context:
+            memory_context = self._load_context()
+
         context = f"Memory context:\n{memory_context}\n\nHypothesis:\n{hypothesis}" \
                   if memory_context else hypothesis
 
@@ -100,7 +120,13 @@ class GANLoop:
         )
         conv_output = self._call(CONVERGENCE_PROMPT, conv_input)
 
-        return self._parse_convergence(conv_output, gen_output, disc_output, rounds)
+        signal = self._parse_convergence(conv_output, gen_output, disc_output, rounds)
+
+        self._append_memory(hypothesis, signal)
+        if signal.confidence > 0.85:
+            self._update_wiki(signal)
+
+        return signal
 
     def _call(self, system: str, user: str) -> str:
         resp = self.client.messages.create(
@@ -165,3 +191,47 @@ class GANLoop:
             rounds=rounds,
             tier3_risk=tier3_risk,
         )
+
+    # ── State persistence ────────────────────────────────────────────────
+
+    def _load_context(self) -> str:
+        """Last 3 memory.md entries + full wiki.md, for auto-injection."""
+        parts = []
+
+        memory_text = self._memory_path.read_text(encoding="utf-8")
+        header = "# Antigravity Memory Log"
+        if memory_text.startswith(header):
+            memory_text = memory_text[len(header):]
+        entries = [e.strip() for e in memory_text.split("---") if e.strip()]
+        if entries:
+            parts.append("\n---\n".join(entries[-3:]))
+
+        wiki_text = self._wiki_path.read_text(encoding="utf-8").strip()
+        if wiki_text and wiki_text != "# Antigravity Wiki":
+            parts.append(wiki_text)
+
+        return "\n\n".join(parts)
+
+    def _append_memory(self, hypothesis: str, signal: GANSignal) -> None:
+        entry = (
+            f"# GAN Loop: {hypothesis[:50]} | {time.time()}\n"
+            f"## Meta\n"
+            f"- Hypothesis ID: {uuid.uuid4()}\n"
+            f"- Confidence: {signal.confidence:.0%}\n"
+            f"- Rounds: {signal.rounds}\n"
+            f"## Core Claim\n{signal.core_claim}\n"
+            f"## Fatal Flaw\n{signal.fatal_flaw}\n"
+            f"## Residual Truth\n{signal.residual_truth}\n"
+            f"---\n"
+        )
+        with self._memory_path.open("a", encoding="utf-8") as fh:
+            fh.write(entry)
+
+    def _update_wiki(self, signal: GANSignal) -> None:
+        """Append a novel high-confidence pattern. Dedup on claim prefix."""
+        existing = self._wiki_path.read_text(encoding="utf-8")
+        if signal.core_claim[:50] in existing:
+            return
+        entry = f"\n## Pattern [{signal.confidence:.0%}]\n{signal.core_claim}\n{signal.residual_truth}\n"
+        with self._wiki_path.open("a", encoding="utf-8") as fh:
+            fh.write(entry)
