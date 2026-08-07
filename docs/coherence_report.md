@@ -133,3 +133,33 @@ was re-run unchanged before and after.
   under stdlib `unittest` instead — see `python3 -m unittest discover -s tests`.
 - `CLAUDE_CODE_PROMPTS.md` already lays out five ready-to-run implementation prompts for closing
   the remaining Track B gaps in order — that file is the actual next-actions list for those.
+
+## 4. Runtime path proof
+
+Stage 1 of this integration added `antigravity/runtime.py::run_end_to_end()`, which
+wires the full chain — `Antigravity.run()` (Track B) `-> bridge.try_to_reasoning_assessment()
+-> execute_session_loop_with_fallback()` (Track A: `decide_final_action`, the real
+writer/auditor loop, the mechanical gate) `->` a structured result — into one callable,
+and proved with `tests/test_runtime.py` that it executes for real. Only `anthropic`'s
+`messages.create` is mocked; `GANLoop`, `CRAGDetector`, `LCVModule`, the bridge,
+`coordinator_agent`, `session_loop`, `MechanicalGate`, and `TruthSentryAuditor` all run
+their real, unmocked code. Full detail, including exactly which test proves each claim,
+lives in `docs/runtime_pipeline.md` — this section is a pointer and a summary, not a
+duplicate.
+
+Two things this milestone deliberately does **not** claim: it does not exercise any
+real knowledge-graph or retrieval system (`retrieval_context` is a plain string
+stand-in — no Qdrant/Memgraph involvement, consistent with §3's "not yet built" list),
+and it does not prove concurrent-call safety — `run_end_to_end` temporarily mutates
+`scripts.session_loop`'s module-level globals and restores them in `finally`, which
+makes concurrent calls from multiple threads in the same process unsafe. The other
+limitation worth carrying forward here: a Tier-3 interrupt inside `Antigravity.run()`
+and any other malformed-signal cause collapse to the same `assessment=None` at the
+`ReasoningAssessment` boundary, indistinguishable from each other; `run_end_to_end`
+now correctly short-circuits that case to BLOCK, a fix made during merge review after
+the first implementation let `None` fall through to the ordinary answer path instead
+(see `docs/runtime_pipeline.md` §6 for the full account).
+
+This closes the "can these two tracks actually run together, not just share a type
+boundary" question left open at the end of §2's status update: yes, for the chain and
+under the deterministic test assumptions documented in `docs/runtime_pipeline.md` §2.
