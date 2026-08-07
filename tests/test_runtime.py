@@ -105,18 +105,20 @@ def _snapshot_globals():
 class TestRuntimeEndToEnd(unittest.TestCase):
 
     def test_real_antigravity_run_produces_real_signals(self):
-        """Antigravity.run() actually executes -- js/cos/confidence values
-        come from real GANSignal/CRAGSignal/LCVOutput computation, not a
-        canned value. Only a real run computes this exact js/cos pair."""
+        """Antigravity.run() actually executes -- confidence and alarm come
+        from real GANSignal/CRAGSignal computation, not a canned value."""
         client = safe_recipe()
         result = run_end_to_end("some hypothesis", RETRIEVAL, anthropic_client=client)
 
         self.assertIsInstance(result["assessment"], ReasoningAssessment)
         self.assertAlmostEqual(result["assessment"].confidence, 0.92, places=6)
         self.assertEqual(result["assessment"].alarm, "SAFE")
-        # Real CRAGDetector computation on identical anchor/current text
-        # collapses to cosine_sim == 1.0, js_divergence == 0.0 -- only a
-        # real run produces exactly that degenerate-but-real value.
+        # alarm=="SAFE" is itself evidence of a real computation: it requires
+        # the real CRAGDetector to have found js_divergence <= 0.05 and
+        # cosine_sim >= 0.70 between the anchor and the GAN's residual_truth
+        # text. This test doesn't assert those two raw values directly --
+        # ReasoningAssessment doesn't expose them -- only that their real
+        # computation landed in the SAFE tier.
         self.assertGreaterEqual(client.messages.create.call_count, 3)
 
     def test_safe_recipe_yields_answer_success(self):

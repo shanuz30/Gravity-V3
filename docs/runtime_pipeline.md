@@ -32,9 +32,13 @@ Each claim below is backed by a specific test in `tests/test_runtime.py`.
 - **`Antigravity.run()` executes for real and produces real signals**, not canned
   values — `test_real_antigravity_run_produces_real_signals` asserts an exact
   `confidence` value (0.92) and `alarm` ("SAFE") that only come out of real
-  `GANSignal`/`CRAGSignal`/`LCVOutput` computation, and separately confirms the mocked
+  `GANSignal`/`CRAGSignal` computation, and separately confirms the mocked
   `anthropic` client was actually called at least 3 times (Generator, Discriminator,
-  Convergence).
+  Convergence). Note precisely what this test does and doesn't check: `alarm=="SAFE"`
+  requires the real `CRAGDetector` to have found `js_divergence<=0.05` and
+  `cosine_sim>=0.70`, but the test doesn't assert those two raw numbers directly —
+  `ReasoningAssessment` doesn't expose them — only that their real computation landed
+  in the `SAFE` tier.
 - **The bridge conversion runs for real** — every test that inspects
   `result["assessment"]` (e.g. `test_safe_recipe_yields_answer_success`,
   `test_full_drift_recipe_yields_blocked`) is observing a real
