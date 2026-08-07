@@ -1,0 +1,63 @@
+name: tests
+
+# CI for Gravity-V3 / Antigravity. No real Anthropic network calls happen
+# anywhere in this suite -- every test that touches the `anthropic` client
+# boundary mocks it (see tests/test_runtime.py and tests/test_e2e_pipeline.py
+# for the mock recipes). Nothing here needs network access or secrets.
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run unit tests
+        run: |
+          set -euo pipefail
+          # `-v` makes every test's outcome -- including any skip -- visible
+          # in the log. Tee to a file so the next step can inspect it without
+          # re-running the suite; pipefail ensures a non-zero unittest exit
+          # (any failure or error) still fails this step even through the
+          # pipe into tee.
+          python -m unittest discover -s tests -v 2>&1 | tee unittest-output.log
+
+      - name: Fail on unexpectedly skipped tests
+        run: |
+          set -euo pipefail
+          # Nothing in this repo should be skipped once dependencies are
+          # installed -- the anthropic client boundary is always mocked, so
+          # no test has a legitimate reason to skip in CI. unittest's own
+          # summary line reads "OK (skipped=N)" (or similarly reports
+          # skipped=N alongside failures/errors) whenever any test was
+          # skipped; a plain "OK" line carries no such suffix. Treat any
+          # occurrence of "skipped=" in the log as a CI failure.
+          if grep -q "skipped=" unittest-output.log; then
+            echo "::error::Unexpected skipped test(s) detected in unittest output:"
+            grep "skipped=" unittest-output.log
+            exit 1
+          fi
+          echo "No skipped tests detected."
+
+      - name: Run validate.py (LCV math vs. Wolfram)
+        run: |
+          set -euo pipefail
+          python validate.py
