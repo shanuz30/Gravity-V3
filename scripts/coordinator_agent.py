@@ -5,7 +5,10 @@ Builds a fact-first WORKER_BRIEF from a knowledge graph payload and user request
 
 from __future__ import annotations
 
-from typing import Any, Iterable
+from dataclasses import dataclass
+from typing import Any, Iterable, Optional
+
+from scripts.reasoning_assessment import ReasoningAssessment, RecommendedAction
 
 
 def prepare_worker_brief(user_input: str, truth_data: dict[str, Any], context: dict[str, Any] | None = None) -> str:
@@ -151,4 +154,43 @@ def _enforce_exact_word_count(text: str, target_words: int) -> str:
         words.append(pad_words[i % len(pad_words)])
         i += 1
     return " ".join(words[:target_words])
+
+
+# ---------------------------------------------------------------------------
+# Antigravity integration: Gravity-V3 remains the policy and execution
+# authority. decide_final_action() is the one seam where a ReasoningAssessment
+# (Antigravity's recommendation) becomes the coordinator's actual decision.
+# Today it agrees with the recommendation; any future site-specific override
+# (stricter thresholds, additional checks) belongs here, not in the adapter.
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class PolicyDecision:
+    """The coordinator's final decision, distinct from Antigravity's mere
+    recommendation. Carries the assessment it was based on for audit logging."""
+    action: RecommendedAction
+    reason: str
+    assessment: Optional[ReasoningAssessment]
+
+
+def decide_final_action(assessment: Optional[ReasoningAssessment]) -> PolicyDecision:
+    """
+    Gravity-V3's policy decision given an (optional) Antigravity assessment.
+
+    assessment=None represents "malformed or unavailable" — e.g. the bridge's
+    try_to_reasoning_assessment()/make_producer_safe() returned None after a
+    parse failure or a simulated/real timeout. The conservative default is to
+    BLOCK rather than silently proceed.
+    """
+    if assessment is None:
+        return PolicyDecision(
+            action=RecommendedAction.BLOCK,
+            reason="malformed_or_unavailable_assessment",
+            assessment=None,
+        )
+    return PolicyDecision(
+        action=assessment.recommended_action,
+        reason=f"antigravity_recommended:{assessment.recommended_action.value}",
+        assessment=assessment,
+    )
 
