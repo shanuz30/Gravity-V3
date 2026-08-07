@@ -103,14 +103,33 @@ substitutions when Track B matures past its "not yet built" gaps:
    describe Gemini 3.1 Pro + Memgraph/Qdrant, which is Track A's world, and will go stale
    the moment Track B's substitutions above land.
 
+### Status update
+
+Recommendation #1 is implemented. Rather than importing Track B's dataclasses directly into
+`metacognitive_monitor.py` (which would give a zero-dependency script a hard dependency on
+numpy/scipy/anthropic), the two tracks now meet at a small, immutable, stdlib-only boundary
+type: `scripts/reasoning_assessment.py::ReasoningAssessment` (confidence, risk_score, alarm,
+damping_active, a bounded `recommended_action` enum, evidence tracking). `antigravity/bridge.py`
+is the one file that translates a Track B `PipelineState` into that contract; the dependency
+direction is one-way (Antigravity depends on `scripts/`, never the reverse). Gravity-V3's own
+`coordinator_agent.py::decide_final_action` remains the actual policy authority over what an
+assessment leads to, and `session_loop.py` now calls it before writing anything, short-circuiting
+on `BLOCK`/`ESCALATE`/`RETRIEVE`/`CLARIFY` — additively, with `reasoning_assessment=None` (the
+default) preserving the exact prior behavior. This also closed a gap section 1 flagged:
+`mechanical_gate.py` was never actually invoked from `session_loop.py` before this change; it's
+now an optional hook checked on the successful-draft path, independent of the CRAG/LCV signals
+themselves (per recommendation #3, it stays a plain command-safety check). All 61 tests pass
+(46 pre-existing/added-with-the-adapter + this integration's own), and `validate.py`'s LCV proof
+was re-run unchanged before and after.
+
 ## 3. Open gaps (carried from `CLAUDE.md` + this session's findings)
 
 - No `memory.md`/`wiki.md` persistence wired yet — `antigravity/state/` is empty.
 - C-RAG Layer 1 runs on a hashed pseudo-distribution, not real token logprobs.
 - No MySQL blackboard for swarm/multi-agent operation.
-- No `requirements.txt`/dependency manifest for either track — this sandbox has none of
-  `numpy`, `scipy`, `anthropic`, or `pytest` installed, so neither track's tests are currently
-  runnable here.
+- ~~No `requirements.txt`/dependency manifest for either track~~ — a root `requirements.txt`
+  now covers Track B's `numpy`/`scipy`/`anthropic` (Track A stays dependency-free by design, so
+  it needs none). `pytest` is still absent from this sandbox, but the whole suite runs fine
+  under stdlib `unittest` instead — see `python3 -m unittest discover -s tests`.
 - `CLAUDE_CODE_PROMPTS.md` already lays out five ready-to-run implementation prompts for closing
-  the Track B gaps in order — that file is the actual next-actions list if the goal becomes
-  building rather than diagnosing.
+  the remaining Track B gaps in order — that file is the actual next-actions list for those.

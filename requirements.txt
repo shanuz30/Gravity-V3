@@ -1,0 +1,13 @@
+# Dependencies for antigravity/ (GAN Mind, C-RAG, LCV, orchestrator, bridge).
+#
+# scripts/ (Gravity-V3) is deliberately pure standard library and needs
+# nothing from this file -- see docs/coherence_report.md for why that
+# boundary matters.
+numpy>=1.24
+scipy>=1.10
+anthropic>=0.34
+
+# Optional: real sentence embeddings instead of the hash-based fallback in
+# antigravity/core/crag.py::embedding_from_text and
+# antigravity/orchestrator.py::_default_embed.
+# sentence-transformers>=2.2
