@@ -24,8 +24,10 @@ and worker-brief PRs merged later.
 | `mcp-servers/lxDIG-MCP/docker-compose.yml` | Memgraph + Qdrant + a Node MCP bridge — the actual infra the arbitrator and gate assume. |
 | `docs/architecture.md`, `docs/setup_guide.md`, `docs/krones_proof_of_sovereignty.md` | External-facing pitch naming **Gemini 3.1 Pro** as the core model, WSL2/Docker as the "sovereign" runtime, and Krones.digital as the target audience. |
 
-This track has unit tests (`tests/test_*.py`) for every script except the gate and monitor,
-and every script is pure standard library — no external dependency needed to run it.
+This track has unit tests (`tests/test_*.py`) for `coordinator_agent.py`, `truth_sentry.py`,
+`session_loop.py`, and `chat_history.py` — `mechanical_gate.py`, `metacognitive_monitor.py`,
+and `query_arbitrator.py` have none. Every script is pure standard library, though — no
+external dependency needed to run it.
 
 ### Track B — "Antigravity" (the later, more rigorous track)
 
