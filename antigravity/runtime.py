@@ -48,22 +48,34 @@ ASSUMPTIONS / DESIGN NOTES (documented here, and in the task summary)
    proving the mechanical gate really runs. Pass an explicit gate object of
    your own if you want different behavior.
 
-4. `assessment=None` (malformed PipelineState / Tier-3 collapse) is passed
-   through unmodified as `reasoning_assessment=None` into
-   `execute_session_loop_with_fallback`. Per session_loop's own documented
-   behavior, a literal `None` there means "skip the policy short-circuit,
-   behave exactly as before this parameter existed" — i.e. the ordinary
-   write/audit loop still runs for real, and this module's `status` field
-   reflects whatever that real loop actually produced (a verified draft, an
-   ESCALATED_TO_HUMAN dict, or an INSUFFICIENT VARIABLES string). This
-   module's `policy_action` field is still recorded as `"block"` in this
-   case — mirroring `decide_final_action(None)`'s BLOCK mapping in the
-   frozen `scripts/coordinator_agent.py` contract — but that is a *recorded*
-   fact about what the assessment layer concluded, not a claim about what
-   session_loop actually did with it, and not a re-decision (we never call
-   `decide_final_action` ourselves). This module never inspects
-   `state.alarm` or otherwise special-cases the Tier-3 path — the
-   assessment=None collapse is accepted exactly as documented in the task
+4. `assessment=None` (malformed PipelineState / Tier-3 collapse) short-
+   circuits to BLOCK *before* `execute_session_loop_with_fallback` is ever
+   called — `session_loop` is not invoked at all in this case. This was
+   corrected after review: `session_loop.py`'s own guard is
+   `if reasoning_assessment is not None:` — it never calls
+   `decide_final_action` for a `None` input, so passing `None` straight
+   through does NOT block; it would have silently fallen into the ordinary
+   write/audit/mechanical-gate path, treating "Antigravity's output was
+   unusable" identically to "no assessment was ever requested." That
+   defeats the entire point of this milestone (Antigravity/Gravity-V3's
+   founding rule: malformed assessment -> BLOCK).
+
+   The fix: this module calls `decide_final_action(None)` itself — reading
+   the frozen `scripts/coordinator_agent.py` contract, never modifying it —
+   for exactly the one input session_loop's own guard means it would never
+   call that function for itself. This is not "calling it twice on the same
+   input" (there is exactly one call site per input: session_loop's, for
+   every non-None assessment; this module's, only for the None case they
+   are mutually exclusive) and not a re-decision on a value session_loop
+   already decided — session_loop never gets the chance to decide on a
+   `None` input at all. The short-circuit result records
+   `status="BLOCKED"`, `policy_action="block"`, `audit=None`, and a
+   `session_result` note explaining session_loop was never invoked; it is
+   still persisted to `chat_history_store` when one was supplied, for audit
+   parity with every other short-circuit path. This module still never
+   inspects `state.alarm` or otherwise special-cases the Tier-3 path itself
+   — the assessment=None collapse (Tier-3 and every other malformed-state
+   cause look identical here) is accepted exactly as documented in the task
    brief, not worked around.
 
 5. Concurrency / thread-safety. `execute_session_loop_with_fallback` reads
@@ -96,6 +108,8 @@ from typing import Any, Callable, Optional
 import numpy as np
 
 import scripts.session_loop as session_loop
+from scripts.chat_history import record_session_result
+from scripts.coordinator_agent import decide_final_action
 from scripts.mechanical_gate import MechanicalGate
 from scripts.reasoning_assessment import ReasoningAssessment
 from scripts.session_loop import execute_session_loop_with_fallback
@@ -213,10 +227,31 @@ def run_end_to_end(
         reasoning_trace_id=None,
     )
 
-    # Recorded, not re-decided — see module docstring, note 4.
-    policy_action = (
-        assessment.recommended_action.value if assessment is not None else "block"
-    )
+    # Malformed/unavailable assessment: short-circuit to BLOCK ourselves,
+    # before session_loop is ever invoked. See module docstring, note 4, for
+    # why this is the one legitimate case where this wrapper calls
+    # decide_final_action() directly rather than letting session_loop do it.
+    if assessment is None:
+        decision = decide_final_action(None)
+        result = {
+            "status": "BLOCKED",
+            "assessment": None,
+            "policy_action": decision.action.value,
+            "session_result": {
+                "note": (
+                    "session_loop was not invoked: Antigravity's output was "
+                    "malformed or unusable (missing crag/lcv signals, a "
+                    "Tier-3 interrupt, or a bridge conversion failure)."
+                )
+            },
+            "audit": None,
+            "trace_id": trace_id,
+        }
+        if chat_history_store is not None:
+            record_session_result(chat_history_store, hypothesis, result, session_id)
+        return result
+
+    policy_action = assessment.recommended_action.value
 
     gan_text = ""
     if state.gan is not None:

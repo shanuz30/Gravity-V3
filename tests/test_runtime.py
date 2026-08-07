@@ -82,6 +82,15 @@ def mechanical_gate_reject_recipe():
     return make_mock_client(gen_text, DISC_TEXT, conv_text)
 
 
+def tier3_recipe():
+    """tier3_risk=true in the Convergence JSON -> Antigravity.run() breaks
+    before crag/lcv are ever computed -> bridge.try_to_reasoning_assessment
+    returns None. This is the malformed/unavailable-assessment case."""
+    gen_text = f"Some analysis.\nCORE CLAIM: {RETRIEVAL}"
+    conv_text = f'{RETRIEVAL}\nCONFIDENCE: 92% - strong\nJSON: {{"confidence": 0.92, "tier3_risk": true}}'
+    return make_mock_client(gen_text, DISC_TEXT, conv_text)
+
+
 def _snapshot_globals():
     return {
         "query_knowledge_graph": session_loop.query_knowledge_graph,
@@ -280,6 +289,70 @@ class TestRuntimeEndToEnd(unittest.TestCase):
         client = safe_recipe()
         result = run_end_to_end("some hypothesis", RETRIEVAL, anthropic_client=client)
         self.assertIn(result["audit"]["final_audit_result"], ("[TRUTH_VERIFIED]",))
+
+    # -----------------------------------------------------------------------
+    # assessment=None (Tier-3 / malformed collapse) must BLOCK, not answer.
+    #
+    # session_loop.py's own guard is `if reasoning_assessment is not None:` --
+    # it never calls decide_final_action() for a None input. Passing None
+    # straight through would silently fall into the ordinary write/audit
+    # path instead of blocking, which is exactly the failure mode this
+    # milestone exists to rule out. Added after review caught this.
+    # -----------------------------------------------------------------------
+
+    def test_tier3_collapse_produces_none_assessment(self):
+        client = tier3_recipe()
+        result = run_end_to_end("some hypothesis", RETRIEVAL, anthropic_client=client)
+        self.assertIsNone(result["assessment"])
+
+    def test_tier3_collapse_blocks_not_answers(self):
+        client = tier3_recipe()
+        result = run_end_to_end("some hypothesis", RETRIEVAL, anthropic_client=client)
+        self.assertEqual(result["status"], "BLOCKED")
+        self.assertEqual(result["policy_action"], "block")
+        self.assertIsNone(result["audit"])
+
+    def test_tier3_collapse_never_invokes_the_writer(self):
+        """Proves session_loop (and therefore the writer/auditor loop) was
+        never called at all for a None assessment -- not just that it
+        returned a blocked-looking result."""
+        client = tier3_recipe()
+        spy_writer = _DeterministicWriter(RETRIEVAL)
+        run_end_to_end("some hypothesis", RETRIEVAL, anthropic_client=client, writer=spy_writer)
+        self.assertEqual(spy_writer.generate_calls, [])
+
+    def test_tier3_collapse_recorded_to_chat_history(self):
+        tmp = tempfile.NamedTemporaryFile(suffix=".json", delete=False)
+        tmp.close()
+        os.unlink(tmp.name)
+        store = ChatHistoryStore(storage_path=tmp.name)
+        try:
+            client = tier3_recipe()
+            result = run_end_to_end(
+                "some hypothesis",
+                RETRIEVAL,
+                anthropic_client=client,
+                chat_history_store=store,
+                session_id="sess-3",
+            )
+            self.assertEqual(result["status"], "BLOCKED")
+            recent = store.get_recent(limit=1)
+            self.assertEqual(len(recent), 1)
+            self.assertEqual(recent[0].status, "BLOCKED")
+            self.assertEqual(recent[0].session_id, "sess-3")
+        finally:
+            if os.path.exists(tmp.name):
+                os.unlink(tmp.name)
+
+    def test_global_injection_untouched_on_tier3_short_circuit(self):
+        """The None-assessment short-circuit returns before session_loop's
+        globals are ever touched, so there's nothing to restore -- confirm
+        they're identical to before the call, not just restored-to-same."""
+        before = _snapshot_globals()
+        client = tier3_recipe()
+        run_end_to_end("some hypothesis", RETRIEVAL, anthropic_client=client)
+        after = _snapshot_globals()
+        self.assertEqual(before, after)
 
 
 if __name__ == "__main__":
